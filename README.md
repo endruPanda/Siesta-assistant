@@ -26,11 +26,56 @@ Error scenario: любой упавший воркфлоу ──► админ 
 
 ## Что нужно
 
-- n8n (облако или self-hosted); для Error scenario включить доступ MCP в настройках инстанса
-- Telegram-боты: клиентский, для ошибок и для отчётов
-- Google: Calendar, Sheets, Drive, Docs, Gmail
-- Supabase: векторная таблица `documents`; Postgres с таблицей `n8n_chat_histories` (создаётся памятью агента)
-- Ключи: Google Gemini, Tavily (веб-поиск), Anthropic (в Error scenario)
+- n8n (облако или self-hosted).
+- Telegram-боты: клиентский, для ошибок и для отчётов. `Alerts` должен писать клиентам от того же бота, что и `Siesta`, иначе ответы на опрос не дойдут до агента.
+- Google: Calendar, Sheets, Drive, Docs, Gmail.
+- Supabase: Postgres с двумя таблицами (SQL ниже).
+- Ключи: Google Gemini, Tavily (веб-поиск), Anthropic (в Error scenario).
+- Для Error scenario: включить доступ MCP в настройках инстанса n8n и вписать выданный токен в credential Bearer Auth ноды `MCP Client`.
+
+## Подготовка базы (Supabase)
+
+Выполните в SQL Editor.
+
+**1. База знаний** (`Rag system` пишет в неё, `Siesta` читает). Размерность 3072 соответствует модели эмбеддингов Gemini по умолчанию в нодах `Embeddings Google Gemini`.
+
+```sql
+create extension if not exists vector;
+create extension if not exists "uuid-ossp";
+
+create table if not exists documents (
+  id text primary key default uuid_generate_v4()::text,
+  content text,
+  metadata jsonb,
+  embedding vector(3072)
+);
+
+create or replace function match_documents(
+  query_embedding vector,
+  match_count int default null,
+  filter jsonb default '{}'
+) returns table (id text, content text, metadata jsonb, similarity float)
+language plpgsql as $$
+begin
+  return query
+  select documents.id, documents.content, documents.metadata,
+         1 - (documents.embedding <=> query_embedding) as similarity
+  from documents
+  where documents.metadata @> filter
+  order by documents.embedding <=> query_embedding
+  limit match_count;
+end;
+$$;
+```
+
+**2. История диалогов** (память агента и источник для `Report`). Таблицу сам создаёт n8n, но без колонки `created_at`, а `Report` отбирает сообщения по времени. Добавьте колонку:
+
+```sql
+alter table n8n_chat_histories
+  add column if not exists created_at timestamptz default now();
+```
+
+Сообщения, записанные до добавления колонки, получат время добавления, а не реальное.
 
 ## Установка
 
@@ -48,9 +93,15 @@ Error scenario: любой упавший воркфлоу ──► админ 
 | `YOUR_VK_CONFIRMATION_CODE`, `vk-webhook` | Siesta | Только если подключаете VK |
 | `YOUR-INSTANCE.app.n8n.cloud` | Error scenario | Адрес вашего n8n |
 
-4. В `Siesta` и `Calendar` нужный Calendar-воркфлоу выберите заново в ноде `Call_Calendar`, а в настройках каждого воркфлоу укажите `Error scenario` как Error workflow.
+4. В `Siesta` в ноде `Call_Calendar` выберите воркфлоу `Calendar` заново. Во всех воркфлоу, кроме `Error scenario`, укажите `Error scenario` как Error workflow (Settings воркфлоу).
 5. Положите прайс и правила салона в папку Google Drive: `Rag system` сам загрузит их в базу.
-6. Активируйте воркфлоу.
+6. Активируйте воркфлоу: сначала `Rag system` и `Calendar`, затем `Siesta`, `Alerts`, `Report`, `Error scenario`.
+
+## Настройка под себя
+
+- **Часы работы** (10:00–20:00): нода `Check hours` в `Calendar` и раздел «Часы работы» в промте агента `Siesta`. Менять нужно в обоих местах.
+- **Часовой пояс**: `Asia/Yekaterinburg` встречается в `Siesta`, `Calendar` и `Report` (промты, выражения времени и код).
+- **Тон и правила ассистента**: системный промт в ноде `AI Agent` воркфлоу `Siesta`.
 
 ## Безопасность
 
