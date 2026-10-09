@@ -1,0 +1,619 @@
+{
+  "name": "Calendar",
+  "nodes": [
+    {
+      "parameters": {
+        "inputSource": "jsonExample",
+        "jsonExample": "{\n  \"action\": \"create\",\n  \"platform\": \"tg\",\n  \"service\": \"массаж спины\",\n  \"start_time\": \"2026-04-18T18:00:00\",\n  \"old_start_time\": \"\",\n  \"duration\": 60,\n  \"chat_id\": \"YOUR_ADMIN_CHAT_ID\",\n  \"name\": \"Степан Игнатьев\",\n  \"telephon_number\": \"8-777-666-55-44\"\n}\n"
+      },
+      "id": "a522cb12-9e2a-4543-9306-9e7c2f42a830",
+      "name": "When Executed by Another Workflow",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        80,
+        432
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "b2ee1f17-6770-43a2-b047-f03d351b3c21",
+              "leftValue": "={{ $json.action }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            },
+            {
+              "id": "808f3446-a8f6-4a3d-a1d5-b9277bd9a386",
+              "leftValue": "={{ $json.start_time }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "6431969f-0c81-46fd-b3be-ce2112f2c03a",
+      "name": "chek_JSON",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        288,
+        432
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "calendar": {
+          "__rl": true,
+          "mode": "list",
+          "value": "your-calendar@gmail.com",
+          "cachedResultName": "your-calendar@gmail.com"
+        },
+        "limit": 250,
+        "timeMin": "={{ $now.setZone('Asia/Yekaterinburg').minus({ hours: 3 }).toISO() }}",
+        "timeMax": "={{ $now.setZone('Asia/Yekaterinburg').plus({ days: 60 }).toISO() }}",
+        "options": {
+          "recurringEventHandling": "expand"
+        }
+      },
+      "id": "50391cb7-3426-4fc1-8455-707b4b794ec8",
+      "name": "Get many events",
+      "type": "n8n-nodes-base.googleCalendar",
+      "typeVersion": 1.3,
+      "position": [
+        400,
+        224
+      ],
+      "alwaysOutputData": true,
+      "credentials": {
+        "googleCalendarOAuth2Api": {
+          "id": "5mmwTyYn2CGw1x0p",
+          "name": "Google Calendar account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const trg = $('When Executed by Another Workflow').first().json;\nconst ZONE = 'Asia/Yekaterinburg';\nconst chatId = String(trg.chat_id || '').trim();\nconst action = String(trg.action || '').toLowerCase().trim();\nconst out = (decision, extra = {}) => [{ json: { ...trg, decision, eventId: '', info: '', ...extra } }];\nif (!chatId) return out('bad_input');\nconst start = DateTime.fromISO(String(trg.start_time), { zone: ZONE });\nif (!start.isValid) return out('bad_input');\nconst dur = Number(trg.duration) > 0 ? Number(trg.duration) : 60;\nconst end = start.plus({ minutes: dur });\nconst now = DateTime.now().setZone(ZONE);\nif (action !== 'delete' && start < now.minus({ minutes: 5 })) return out('past');\n\nconst toDt = v => DateTime.fromISO(v || '', { zone: ZONE });\nconst events = $input.all().map(i => i.json)\n  .filter(e => e && e.id && e.status !== 'cancelled')\n  .map(e => ({ e, s: toDt(e.start && (e.start.dateTime || e.start.date)), f: toDt(e.end && (e.end.dateTime || e.end.date)) }))\n  .filter(x => x.s.isValid && x.f.isValid);\n\nconst idRe = new RegExp('(^|\\\\D)' + chatId + '(\\\\D|$)');\nconst isMine = x => idRe.test(String(x.e.description || ''));\nconst overlaps = x => x.s < end && x.f > start;\nconst fmt = x => x.s.setLocale('ru').toFormat('d MMMM, HH:mm');\nconst mine = events.filter(x => isMine(x) && x.f > now).sort((a, b) => a.s.toMillis() - b.s.toMillis());\n\nlet decision, target = null, info = '';\nif (action === 'delete' || action === 'update') {\n  let pool = mine;\n  const ref = action === 'delete' ? start : (trg.old_start_time ? toDt(String(trg.old_start_time)) : null);\n  if (ref && ref.isValid) {\n    const near = mine.filter(x => Math.abs(x.s.toMillis() - ref.toMillis()) < 30 * 60000);\n    pool = near.length ? near : mine.filter(x => x.s.hasSame(ref, 'day'));\n  }\n  if (!pool.length) decision = action === 'delete' ? 'noop_delete' : 'noop_update';\n  else if (pool.length > 1) { decision = 'ambiguous'; info = pool.map(fmt).join('; '); }\n  else {\n    target = pool[0];\n    decision = action;\n    if (action === 'update' && events.some(x => x.e.id !== target.e.id && overlaps(x))) decision = 'busy';\n  }\n} else if (action === 'get') {\n  decision = events.some(overlaps) ? 'busy' : 'free';\n} else if (action === 'create') {\n  const hit = events.filter(overlaps);\n  if (hit.some(x => !isMine(x))) decision = 'busy';\n  else if (hit.length) decision = 'exists';\n  else decision = 'create';\n} else {\n  decision = 'bad_input';\n}\n\nconst old = target ? target.e : null;\nconst oldDesc = String((old && old.description) || '');\nconst pick = re => (oldDesc.match(re) || [])[1] || '';\nconst service = trg.service || pick(/Услуга:\\s*(.+)/);\nconst phone = trg.telephon_number || pick(/Телефон:\\s*(.+)/);\nconst name = trg.name || ((old && old.summary) || '').split(': ').slice(1).join(': ');\nreturn out(decision, {\n  eventId: target ? target.e.id : '',\n  info,\n  startIso: start.toISO(),\n  endIso: end.toISO(),\n  summary: service + ': ' + name,\n  description: 'Телефон: ' + phone + '\\nChat ID: ' + chatId + '\\nПлатформа: ' + (trg.platform || '') + '\\nУслуга: ' + service\n});"
+      },
+      "id": "e04a8d98-6207-41e1-b792-41d2d233961f",
+      "name": "Decide",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        560,
+        224
+      ]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "c-create",
+                    "leftValue": "={{ $json.decision }}",
+                    "rightValue": "create",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "c-update",
+                    "leftValue": "={{ $json.decision }}",
+                    "rightValue": "update",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "c-delete",
+                    "leftValue": "={{ $json.decision }}",
+                    "rightValue": "delete",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            }
+          ]
+        },
+        "looseTypeValidation": true,
+        "options": {
+          "fallbackOutput": "extra"
+        }
+      },
+      "id": "f8645e64-c9db-4c33-a26a-bcf4c67ce663",
+      "name": "Route",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        720,
+        192
+      ]
+    },
+    {
+      "parameters": {
+        "calendar": {
+          "__rl": true,
+          "value": "your-calendar@gmail.com",
+          "mode": "list",
+          "cachedResultName": "your-calendar@gmail.com"
+        },
+        "start": "={{ $json.startIso }}",
+        "end": "={{ $json.endIso }}",
+        "additionalFields": {
+          "description": "={{ $json.description }}",
+          "summary": "={{ $json.summary }}"
+        }
+      },
+      "id": "46cd55fc-ac27-499b-ac07-d801783621f4",
+      "name": "Create an event",
+      "type": "n8n-nodes-base.googleCalendar",
+      "typeVersion": 1.3,
+      "position": [
+        944,
+        48
+      ],
+      "credentials": {
+        "googleCalendarOAuth2Api": {
+          "id": "5mmwTyYn2CGw1x0p",
+          "name": "Google Calendar account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "raw",
+        "jsonOutput": "={{ JSON.stringify({ status: (['create','update','delete'].includes($('Decide').first().json.decision) ? 'success' : (['free','exists'].includes($('Decide').first().json.decision) ? 'ok' : 'not_done')), decision: $('Decide').first().json.decision, message: ({ create: 'Запись создана! Жду тебя.', update: 'Запись перенесена, новое время в силе!', delete: 'Запись удалена. Жаль, но до встречи!', busy: 'Это время уже занято. Нужно выбрать другое.', free: 'Это время свободно.', past: 'Это время уже прошло, нужно выбрать другое.', exists: 'Такая запись уже есть.', noop_delete: 'Не нашла активной записи для удаления.', noop_update: 'Не нашла активной записи для переноса.', ambiguous: 'У клиента несколько записей, нужно уточнить, какую именно. Записи: ' + $('Decide').first().json.info, bad_input: 'Не удалось разобрать дату и время.' })[$('Decide').first().json.decision] }) }}",
+        "options": {}
+      },
+      "id": "03bab455-4f26-4efe-bd8d-de78c7f397e3",
+      "name": "Edit Fields",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1184,
+        272
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "calendar": {
+          "__rl": true,
+          "value": "your-calendar@gmail.com",
+          "mode": "list",
+          "cachedResultName": "your-calendar@gmail.com"
+        },
+        "eventId": "={{ $json.eventId }}",
+        "updateFields": {
+          "description": "={{ $json.description }}",
+          "end": "={{ $json.endIso }}",
+          "start": "={{ $json.startIso }}",
+          "summary": "={{ $json.summary }}"
+        }
+      },
+      "id": "84a9b6aa-288a-4e57-b626-308e1f30d384",
+      "name": "Update an event",
+      "type": "n8n-nodes-base.googleCalendar",
+      "typeVersion": 1.3,
+      "position": [
+        944,
+        208
+      ],
+      "credentials": {
+        "googleCalendarOAuth2Api": {
+          "id": "5mmwTyYn2CGw1x0p",
+          "name": "Google Calendar account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "delete",
+        "calendar": {
+          "__rl": true,
+          "value": "your-calendar@gmail.com",
+          "mode": "list",
+          "cachedResultName": "your-calendar@gmail.com"
+        },
+        "eventId": "={{ $json.eventId }}",
+        "options": {}
+      },
+      "id": "155c5c9a-1882-4e4b-a99d-5478d8d729bb",
+      "name": "Delete an event",
+      "type": "n8n-nodes-base.googleCalendar",
+      "typeVersion": 1.3,
+      "position": [
+        944,
+        352
+      ],
+      "credentials": {
+        "googleCalendarOAuth2Api": {
+          "id": "5mmwTyYn2CGw1x0p",
+          "name": "Google Calendar account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "raw",
+        "jsonOutput": "={\n  \"status\": \"error\",\n  \"message\": \"Некорректный запрос: не хватает action или start_time.\"\n}",
+        "options": {}
+      },
+      "id": "bfcd834e-683c-43ac-a737-f5ca3b60ab7a",
+      "name": "Invalid input",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1184,
+        448
+      ]
+    },
+    {
+      "parameters": {
+        "content": "",
+        "height": 656,
+        "width": 256,
+        "color": 6
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1120,
+        0
+      ],
+      "id": "a88993b8-93b8-4b6a-b995-215669ae4d72",
+      "name": "Sticky Note"
+    },
+    {
+      "parameters": {
+        "content": "",
+        "height": 656,
+        "width": 256,
+        "color": 5
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        864,
+        0
+      ],
+      "id": "c190a685-b9f6-4c24-ada5-7c0a7961d8cf",
+      "name": "Sticky Note2"
+    },
+    {
+      "parameters": {
+        "content": "",
+        "height": 656,
+        "width": 608,
+        "color": 4
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        256,
+        0
+      ],
+      "id": "f19011bb-bbf3-42e1-865d-5df4812b1f9d",
+      "name": "Sticky Note3"
+    },
+    {
+      "parameters": {
+        "content": "",
+        "height": 656,
+        "width": 256,
+        "color": 3
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "976b7315-2caf-45ac-86a8-88508b4a502e",
+      "name": "Sticky Note4"
+    },
+    {
+      "parameters": {
+        "chatId": "YOUR_ADMIN_CHAT_ID",
+        "text": "={{ (() => {\n  const d = $('Decide').first().json;\n  const old = $('Get many events').all().map(i => i.json).find(e => e && e.id && e.id === d.eventId);\n  const esc = s => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');\n  const fmt = v => DateTime.fromISO(v, { zone: 'Asia/Yekaterinburg' }).setLocale('ru').toFormat('d MMMM (ccc), HH:mm');\n  const del = d.decision === 'delete';\n  const oldStart = old ? ((old.start && (old.start.dateTime || old.start.date)) || '') : '';\n  const src = del ? String((old && old.description) || '') : String(d.description || '');\n  const pick = re => (src.match(re) || [])[1] || '';\n  const summary = del ? String((old && old.summary) || d.summary || '') : String(d.summary || '');\n  const svc = summary.split(': ')[0];\n  const name = summary.split(': ').slice(1).join(': ') || d.name || '';\n  const phone = pick(/Телефон:\\s*(.+)/) || d.telephon_number || '';\n  const head = { create: '🆕 <b>НОВАЯ ЗАПИСЬ</b>', update: '🔄 <b>ПЕРЕНОС ЗАПИСИ</b>', delete: '❌ <b>ОТМЕНА ЗАПИСИ</b>' }[d.decision];\n  const client = d.platform === 'tg' ? '<a href=\"tg://user?id=' + esc(d.chat_id) + '\">' + esc(name) + '</a>' : esc(name);\n  const lines = [head, '👤 <b>Клиент:</b> ' + client, '💆 <b>Услуга:</b> ' + esc(svc)];\n  if (d.decision === 'update') {\n    if (oldStart) lines.push('🕒 <b>Было:</b> ' + fmt(oldStart));\n    lines.push('🕒 <b>Стало:</b> ' + fmt(d.startIso));\n  } else {\n    lines.push('🕒 <b>Время:</b> ' + fmt(del && oldStart ? oldStart : d.startIso));\n  }\n  lines.push('📞 <b>Телефон:</b> ' + esc(phone));\n  lines.push('💬 <b>Платформа:</b> ' + esc(d.platform || '') + ', ID ' + esc(d.chat_id));\n  return lines.join('\\n');\n})() }}",
+        "additionalFields": {
+          "appendAttribution": false,
+          "parse_mode": "HTML"
+        }
+      },
+      "id": "3f86ae7a-1fc5-416a-9878-2e2e0774d53c",
+      "name": "Notify admin",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1184,
+        80
+      ],
+      "webhookId": "dbc44538-098f-49cb-862d-5a70338ebe97",
+      "credentials": {
+        "telegramApi": {
+          "id": "TfnCr20yASwkUHoi",
+          "name": "Сиеста чат"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "hours-ok",
+              "leftValue": "={{ (() => { const s = DateTime.fromISO(String($json.start_time), { zone: 'Asia/Yekaterinburg' }); if (!s.isValid || String($json.action).toLowerCase() === 'delete') return true; const dur = Number($json.duration) > 0 ? Number($json.duration) : 60; return s.hour >= 10 && s.plus({ minutes: dur }) <= s.startOf('day').plus({ hours: 20 }); })() }}",
+              "operator": {
+                "operation": "true",
+                "singleValue": true,
+                "type": "boolean"
+              },
+              "rightValue": ""
+            }
+          ],
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          }
+        },
+        "options": {}
+      },
+      "id": "8b0b89c5-39d3-45b4-8982-ab384ec9dcc5",
+      "name": "Check hours",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        448,
+        432
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "raw",
+        "jsonOutput": "={\n  \"status\": \"not_done\",\n  \"decision\": \"closed\",\n  \"message\": \"Салон принимает с 10:00 до 20:00 по Екатеринбургу, сеанс должен закончиться до 20:00. Нужно выбрать другое время.\"\n}",
+        "options": {}
+      },
+      "id": "8fc5dfef-46d3-4f50-b88a-ad442b4c1a14",
+      "name": "Out of hours",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        608,
+        608
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When Executed by Another Workflow": {
+      "main": [
+        [
+          {
+            "node": "chek_JSON",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "chek_JSON": {
+      "main": [
+        [
+          {
+            "node": "Check hours",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Invalid input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get many events": {
+      "main": [
+        [
+          {
+            "node": "Decide",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Decide": {
+      "main": [
+        [
+          {
+            "node": "Route",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route": {
+      "main": [
+        [
+          {
+            "node": "Create an event",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Update an event",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Delete an event",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Edit Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create an event": {
+      "main": [
+        [
+          {
+            "node": "Notify admin",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update an event": {
+      "main": [
+        [
+          {
+            "node": "Notify admin",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Delete an event": {
+      "main": [
+        [
+          {
+            "node": "Notify admin",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notify admin": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check hours": {
+      "main": [
+        [
+          {
+            "node": "Get many events",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Out of hours",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "timeSavedMode": "fixed",
+    "errorWorkflow": "LrnqcTPhrjnVcsm4",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": true
+  },
+  "versionId": "5dc65c5f-090c-4cbc-8904-95c9a6730989",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "aiBuilderAssisted": true,
+    "builderVariant": "mcp",
+    "instanceId": "REDACTED"
+  },
+  "nodeGroups": [],
+  "id": "6tXN4CETVepjD11G",
+  "tags": []
+}

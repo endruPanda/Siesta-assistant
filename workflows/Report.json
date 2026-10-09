@@ -1,0 +1,211 @@
+{
+  "name": "Report",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": 12
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.4,
+      "position": [
+        0,
+        0
+      ],
+      "id": "9c794b1c-a1d6-4a97-ac6c-c71e68979655",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.message?.text ? $json.message.text : 'Сформируй отчет за последние 24 часа.' }}\nТекущие дата и время: {{ $now.setZone('Asia/Yekaterinburg').setLocale('ru').toFormat('EEEE, dd MMMM yyyy, HH:mm ZZ') }} (Екатеринбург)",
+        "options": {
+          "systemMessage": "=Ты — аналитический модуль для салона «Siesta». Твоя задача — генерировать отчёты по активности бота и клиентов за любой запрошенный период.\n\nПЕРИОД И ДАННЫЕ:\n1. Определи период из запроса: «вчера», «за неделю», «с 1 по 5 октября», «за октябрь» и т.п. Текущие дата и время указаны в запросе (Екатеринбург, UTC+5). Если период не указан — последние 24 часа до текущего момента.\n2. Данные бери инструментом get_chat_history, передавая from_ts (начало, включительно) и to_ts (конец, не включительно) в ISO 8601 с часовым поясом +05:00. Календарные границы: «вчера» = с 00:00 вчера до 00:00 сегодня; «за октябрь» = с 1 октября 00:00 до 1 ноября 00:00; «последние N дней/часов» = от текущего момента минус N до текущего момента. Не придумывай данные: используй только то, что вернул инструмент.\n3. Инструмент возвращает сообщения (role human — клиент, ai — Сиеста, tool — ошибки инструментов), session_id — это Telegram ID клиента, и поле total_in_period. Если total_in_period больше числа полученных строк, укажи в письме, что данные обрезаны, и предложи сузить период.\n4. Если за период данных нет, сформируй короткий отчёт с нулями и пометкой «за выбранный период активности не было».\n5. В шапке письма пиши фактический период в формате «8 окт 2026, 00:00 — 9 окт 2026, 00:00».\n\nОБЩИЕ ТРЕБОВАНИЯ К ФОРМАТУ:\n1. Выходной результат должен быть СТРОГО в формате чистого HTML-кода (без тегов ```html, без маркдауна, без вступительного и заключительного текста).\n2. Используй встроенные (inline) CSS-стили для всех элементов, чтобы верстка корректно отображалась в любых почтовых клиентах.\n3. Цветовая гамма: тёмный фон (#1a1a1a / #222222), светлый текст (#e0e0e0), акценты: зеленый (#66bb6a), синий (#42a5f5), желтый/оранжевый (#ffb74d / #ff9800), красный (#ef5350).\n4. Вместо внешних картинок используй нативные HTML/CSS элементы: прогресс-бары (div с width: X%), цветные плашки и шкалы.\n\nСТРУКТУРА HTML-ПИСЬМА:\n\n<div style=\"background-color: #1a1a1a; color: #e0e0e0; font-family: Arial, sans-serif; padding: 20px; max-width: 600px; margin: 0 auto; border-radius: 10px;\">\n\n  <!-- ШАПКА -->\n  <div style=\"border-bottom: 1px solid #333; padding-bottom: 15px; margin-bottom: 20px;\">\n    <h2 style=\"color: #66bb6a; margin: 0; font-size: 20px;\">📊 Салон «Siesta» — Отчёт</h2>\n    <p style=\"color: #888; font-size: 12px; margin: 5px 0 0 0;\">Период: {ПЕРИОД}</p>\n  </div>\n\n  <!-- КАРТОЧКИ KPI (3 в ряд или сеткой) -->\n  <div style=\"display: flex; gap: 10px; margin-bottom: 20px;\">\n    <div style=\"flex: 1; background-color: #262626; padding: 12px; border-radius: 8px; text-align: center;\">\n      <div style=\"font-size: 22px; font-weight: bold; color: #42a5f5;\">{ВСЕГО_КЛИЕНТОВ}</div>\n      <div style=\"font-size: 10px; color: #aaa; text-transform: uppercase; margin-top: 4px;\">Клиентов за период</div>\n    </div>\n    <div style=\"flex: 1; background-color: #262626; padding: 12px; border-radius: 8px; text-align: center;\">\n      <div style=\"font-size: 22px; font-weight: bold; color: #66bb6a;\">{УСПЕШНЫХ_ЗАПИСЕЙ}/{ВСЕГО_ЗАПИСЕЙ}</div>\n      <div style=\"font-size: 10px; color: #aaa; text-transform: uppercase; margin-top: 4px;\">Записей / Успех</div>\n    </div>\n    <div style=\"flex: 1; background-color: #262626; padding: 12px; border-radius: 8px; text-align: center;\">\n      <div style=\"font-size: 22px; font-weight: bold; color: #ef5350;\">{ТРЕБУЮТ_ВНИМАНИЯ}</div>\n      <div style=\"font-size: 10px; color: #aaa; text-transform: uppercase; margin-top: 4px;\">Требуют внимания</div>\n    </div>\n  </div>\n\n  <!-- ИНФОГРАФИКА 1: ПОПУЛЯРНОСТЬ УСЛУГ (ПРОГРЕСС-БАРЫ) -->\n  <div style=\"background-color: #262626; padding: 15px; border-radius: 8px; margin-bottom: 15px;\">\n    <h3 style=\"color: #66bb6a; margin-top: 0; font-size: 14px; margin-bottom: 12px;\">📊 Популярные услуги и спрос</h3>\n    \n    <!-- Повторять блок для каждой услуги на основе данных -->\n    <div style=\"margin-bottom: 10px;\">\n      <div style=\"display: flex; justify-content: space-between; font-size: 12px; color: #ccc; margin-bottom: 4px;\">\n        <span>{НАЗВАНИЕ_УСЛУГИ_1}</span>\n        <span>{ПРОЦЕНТ_1}% ({КОЛИЧЕСТВО_1})</span>\n      </div>\n      <div style=\"background-color: #333; border-radius: 4px; height: 8px; overflow: hidden;\">\n        <div style=\"background-color: #66bb6a; width: {ПРОЦЕНТ_1}%; height: 100%;\"></div>\n      </div>\n    </div>\n\n    <div style=\"margin-bottom: 10px;\">\n      <div style=\"display: flex; justify-content: space-between; font-size: 12px; color: #ccc; margin-bottom: 4px;\">\n        <span>{НАЗВАНИЕ_УСЛУГИ_2}</span>\n        <span>{ПРОЦЕНТ_2}% ({КОЛИЧЕСТВО_2})</span>\n      </div>\n      <div style=\"background-color: #333; border-radius: 4px; height: 8px; overflow: hidden;\">\n        <div style=\"background-color: #42a5f5; width: {ПРОЦЕНТ_2}%; height: 100%;\"></div>\n      </div>\n    </div>\n  </div>\n\n  <!-- ИНФОГРАФИКА 2: ТЕМПЕРАТУРА ОЦЕНОК И НАСТРОЕНИЕ -->\n  <div style=\"background-color: #262626; padding: 15px; border-radius: 8px; margin-bottom: 15px;\">\n    <h3 style=\"color: #ffb74d; margin-top: 0; font-size: 14px; margin-bottom: 12px;\">🌡️ Индекс удовлетворенности (CSAT / Настроение)</h3>\n    <div style=\"display: flex; align-items: center; gap: 15px;\">\n      <div style=\"font-size: 26px; font-weight: bold; color: #66bb6a; min-width: 60px;\">{СРЕДНЯЯ_ОЦЕНКА} <span style=\"font-size: 12px; color: #888;\">/ 5</span></div>\n      <div style=\"flex-grow: 1;\">\n        <div style=\"background: linear-gradient(to right, #ef5350, #ffca28, #66bb6a); height: 8px; border-radius: 4px; position: relative;\">\n          <div style=\"position: absolute; left: {ПОЛОЖЕНИЕ_МАРКЕРА_В_ПРОЦЕНТАХ}%; top: -3px; width: 14px; height: 14px; background-color: #fff; border-radius: 50%;\"></div>\n        </div>\n        <div style=\"display: flex; justify-content: space-between; font-size: 10px; color: #888; margin-top: 4px;\">\n          <span>Негатив</span>\n          <span>Нейтрально</span>\n          <span>Позитив</span>\n        </div>\n      </div>\n    </div>\n  </div>\n\n  <!-- ОБРАТНАЯ СВЯЗЬ -->\n  <div style=\"background-color: #262626; padding: 15px; border-radius: 8px; margin-bottom: 15px;\">\n    <h3 style=\"color: #42a5f5; margin-top: 0; font-size: 14px; margin-bottom: 8px;\">💬 Обратная связь и текстовое резюме</h3>\n    <p style=\"font-size: 13px; color: #ccc; line-height: 1.5; margin: 0;\">\n      {КРАТКИЙ_АНАЛИЗ_ОТЗЫВОВ_И_ДИАЛОГОВ}\n    </p>\n  </div>\n\n  <!-- ОШИБКИ И СБОИ -->\n  <div style=\"background-color: #2b1f1f; border-left: 4px solid #ef5350; padding: 12px 15px; border-radius: 4px; margin-bottom: 15px;\">\n    <h3 style=\"color: #ef5350; margin-top: 0; font-size: 14px; margin-bottom: 8px;\">⚠️ Ошибки и проблемы в сценариях</h3>\n    <ul style=\"margin: 0; padding-left: 18px; font-size: 13px; color: #e0e0e0; line-height: 1.5;\">\n      {СПИСОК_ОШИБОК_С_ID_КЛИЕНТОВ}\n    </ul>\n  </div>\n\n  <!-- ACTION REQUIRED -->\n  <div style=\"background-color: #2d2218; border-left: 4px solid #ff9800; padding: 12px 15px; border-radius: 4px;\">\n    <h3 style=\"color: #ff9800; margin-top: 0; font-size: 14px; margin-bottom: 8px;\">📌 Требует внимания администратора</h3>\n    <ul style=\"margin: 0; padding-left: 18px; font-size: 13px; color: #e0e0e0; line-height: 1.5;\">\n      {СПИСОК_КЛИЕНТОВ_ДЛЯ_РУЧНОЙ_СВЯЗИ}\n    </ul>\n  </div>\n\n</div>"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        224,
+        0
+      ],
+      "id": "fcd72e3a-0e0a-40ff-a589-fcf912d17779",
+      "name": "AI Agent"
+    },
+    {
+      "parameters": {
+        "modelName": "models/gemini-3.5-flash-lite",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1.1,
+      "position": [
+        224,
+        176
+      ],
+      "id": "09d02f24-4c83-4d81-9312-33192915a39c",
+      "name": "Google Gemini Chat Model",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "ehypoveIlYVLt7tg",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sendTo": "admin@example.com",
+        "subject": "Отчёт по ассистенту \"Siesta\"",
+        "message": "={{ $json.output }}",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        528,
+        0
+      ],
+      "id": "0c9c4cd1-6344-4bae-8cee-ed2b2d2d8f8a",
+      "name": "Send a message",
+      "webhookId": "7dd87aba-70a2-4ccc-8b79-a2d874bd6665",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "y7YO0yWVA8kFGjpp",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "updates": [
+          "message"
+        ],
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1.5,
+      "position": [
+        0,
+        192
+      ],
+      "id": "b45c5b27-3edb-4308-b158-91d4fc658cca",
+      "name": "Telegram Trigger",
+      "webhookId": "f1c3e967-787f-4f10-a4b8-31a25fe808ac",
+      "credentials": {
+        "telegramApi": {
+          "id": "yzUDgNK0EzsVaPMo",
+          "name": "Сиеста отчёт"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "descriptionType": "manual",
+        "toolDescription": "История диалогов бота Сиеста из базы за указанный период. Параметры: from_ts — начало периода (включительно), to_ts — конец (не включительно), оба в ISO 8601 с часовым поясом +05:00. Возвращает до 500 сообщений по порядку: local_time (екатеринбургское время), session_id (Telegram ID клиента), role (human — клиент, ai — Сиеста, tool — ошибка инструмента), content (до 300 символов), total_in_period (сколько всего сообщений в периоде). Вызывай один раз на весь период.",
+        "operation": "executeQuery",
+        "query": "SELECT count(*) OVER() AS total_in_period,\n       (created_at AT TIME ZONE 'Asia/Yekaterinburg') AS local_time,\n       session_id,\n       message->>'type' AS role,\n       left(message->>'content', 300) AS content\nFROM public.n8n_chat_histories\nWHERE created_at >= $1::timestamptz\n  AND created_at < $2::timestamptz\n  AND (\n    (message->>'type' IN ('human', 'ai') AND coalesce(message->>'content', '') NOT IN ('', '[]'))\n    OR (message->>'type' = 'tool' AND message->>'content' ILIKE '%\"error\"%')\n  )\nORDER BY created_at\nLIMIT 500",
+        "options": {
+          "queryReplacement": "={{ $fromAI('from_ts', 'Начало периода (включительно), ISO 8601 с часовым поясом, например 2026-10-08T00:00:00+05:00', 'string') }},{{ $fromAI('to_ts', 'Конец периода (не включительно), ISO 8601 с часовым поясом, например 2026-10-09T00:00:00+05:00', 'string') }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgresTool",
+      "typeVersion": 2.7,
+      "position": [
+        368,
+        192
+      ],
+      "id": "64a7d05c-5ea9-4ad4-9aca-0016804097d1",
+      "name": "get_chat_history",
+      "credentials": {
+        "postgres": {
+          "id": "QAUoi9cqfmMGT5iT",
+          "name": "Postgres account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent": {
+      "main": [
+        [
+          {
+            "node": "Send a message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Telegram Trigger": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "get_chat_history": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "timeSavedMode": "fixed",
+    "errorWorkflow": "LrnqcTPhrjnVcsm4",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": true
+  },
+  "versionId": "95a5b91b-7a77-4423-b939-537a4ae6031e",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "aiBuilderAssisted": true,
+    "builderVariant": "mcp",
+    "instanceId": "REDACTED"
+  },
+  "nodeGroups": [],
+  "id": "3ePM8vVGd9ubYuKU",
+  "tags": []
+}

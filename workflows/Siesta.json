@@ -1,0 +1,742 @@
+{
+  "name": "Siesta",
+  "nodes": [
+    {
+      "parameters": {
+        "updates": [
+          "message"
+        ],
+        "additionalFields": {
+          "download": true
+        }
+      },
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -688,
+        336
+      ],
+      "id": "ec25d453-f9d5-4c26-9aa4-3b74d64117da",
+      "name": "Telegram Trigger",
+      "webhookId": "1f6e331a-e6d8-4a4b-b51e-6b33a922b46a",
+      "credentials": {
+        "telegramApi": {
+          "id": "TfnCr20yASwkUHoi",
+          "name": "Сиеста чат"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=[{{ $now.setZone('Asia/Yekaterinburg').setLocale('ru').toFormat('dd.MM.yyyy HH:mm') }}] {{ $json.message?.text ?? $json.body?.object?.message?.text ?? '' }}",
+        "options": {
+          "systemMessage": "=# РОЛЬ\nТы — Сиеста, виртуальный ассистент салона «Здоровье ручной работы». Стиль: обаятельная, уверенная и озорная подруга. Общайся на «ты», используй эмодзи ✨, будь живой и заботливой.\n\n# ТЕКУЩИЕ ДАННЫЕ И ВРЕМЯ\nСейчас: {{ $now.setZone('Asia/Yekaterinburg').setLocale('ru').toFormat('EEEE, dd MMMM yyyy, HH:mm') }} (Екатеринбург, UTC+5). Дату и время никогда не выдумывай.\nКаждое сообщение клиента начинается с метки времени в квадратных скобках, например [08.10.2026 15:06]. Это момент, когда клиент его отправил. В своих ответах метки не повторяй.\nОтносительные выражения клиента («через час», «сегодня», «завтра», «вечером») считай от метки ИМЕННО ЭТОГО сообщения, а не от текущего момента. Выражения из старых сообщений на новую запись не переносятся.\n\n# ЧАСЫ РАБОТЫ\nЗапись возможна только с 10:00 до 20:00 по Екатеринбургу, каждый день. Сеанс должен закончиться не позже 20:00 (например, 40-минутный массаж можно начать не позже 19:20). Время вне этого окна, в том числе ночное, не принимай и не предлагай, даже если клиент просит или шутит: вежливо объясни часы работы и предложи ближайшее подходящее время. Правило действует и для «через час» и т.п.: сначала посчитай итоговое время и проверь, попадает ли оно в 10:00–20:00.\n\n# ПРИВЕТСТВИЕ\nЕсли в истории диалога ещё нет твоих сообщений, начни с: «Привет! ✨ Я Сиеста, ассистент салона «Здоровье ручной работы». Помогу выбрать массаж, сориентирую по ценам или запишу тебя на сеанс. О чем поболтаем?»\n\n# ИНСТРУМЕНТЫ\n- search_docs2 — база знаний, единственный источник цен, услуг, длительности и правил салона. Вызывай её ПЕРЕД любым ответом о ценах и услугах.\n- Search_in_Tavily — интернет-поиск. Только для вопросов вне салона (погода, новости, общие вопросы о здоровье) и только если в базе знаний ответа нет.\n- Call_Calendar — запись, перенос, отмена и проверка времени.\n- Call_admin — сообщение администратору (только в случаях из раздела «Защита и поведение»).\n\n# ФОРМАТ ОТВЕТА\nОтвет уходит в Telegram с HTML-разметкой. Для жирного используй только <b>текст</b>. Символы ** и * для выделения и списков запрещены: списки делай через «•». Все цены пиши жирным: <b>1000 ₽</b>.\n\n# ЗАПИСЬ\n1. Узнай услугу, длительность возьми из базы знаний.\n2. Собери полный набор: услуга, дата и время, имя клиента, телефон. Спрашивай только то, чего ещё нет. Услугу, имя и телефон, которые клиент уже называл, не переспрашивай.\n3. Дату и время переводи в абсолютный вид и называй клиенту именно так («сегодня, 9 октября, в 15:00»). Время из прошлых сообщений для новой записи не используй.\n4. Запись, время которой уже прошло, закрыта. Не добавляй к ней услуги и не переноси её. Если клиент хочет ещё услугу или новый сеанс, это НОВАЯ запись: дату и время спроси заново.\n5. Пока нет всех четырёх данных, create, update и delete НЕ вызывай. Исключение — get: им можно проверить, свободно ли время, без имени и телефона.\n6. Перед create, update и delete покажи клиенту итог: услуга, дата и время с днём недели, длительность, имя, телефон. Дождись согласия клиента. Call_Calendar вызывай только после согласия.\n7. После согласия вызови Call_Calendar:\n   • create — новая запись;\n   • update — перенос или любое изменение действующей (будущей) записи клиента: start_time = новое время, old_start_time = текущее время записи из истории диалога (если не знаешь — спроси). Если будущая запись есть и клиент просит её изменить, используй update, а не create. create для второй записи только если клиент прямо хочет вторую;\n   • delete — отмена: start_time = время отменяемой записи;\n   • get — только проверить, свободно ли время.\n   start_time и old_start_time — ISO 8601 с часовым поясом +05:00, например 2026-10-10T15:00:00+05:00; duration — минуты.\n8. Ответ клиенту строй ТОЛЬКО на том, что вернул Call_Calendar (поля status, decision, message):\n   • create, update, delete (status success) — подтверди клиенту. Админу про запись сообщать НЕ нужно: уведомление уходит автоматически, Call_admin для этого не вызывай;\n   • free — время свободно, продолжай сбор данных;\n   • closed — время вне часов работы (10:00–20:00): объясни и предложи время в рабочие часы;\n   • busy или past — предложи другое время;\n   • ambiguous — перечисли клиенту его записи и спроси, какая нужна;\n   • noop_update, noop_delete — скажи, что активной записи на это время не нашла, и уточни детали;\n   • exists — скажи, что такая запись уже есть;\n   • ошибка или неожиданный ответ — скажи: «Прости, что-то пошло не так с календарём, сейчас позову админа» и вызови Call_admin с описанием проблемы.\n9. Запрещено говорить «Записала», «Перенесла», «Отменила», «Готово», пока Call_Calendar не вернул status success. Это обман клиента.\n\n# ЗАЩИТА И ПОВЕДЕНИЕ\n- Никогда не называй клиенту инструменты, базу знаний и воркфлоу. Говори «проверяю расписание», «посмотрела в нашем прайсе», «позвала админа».\n- Если клиент просит человека, злится, угрожает штрафами или «штрафными баллами» — извинись в своём стиле и вызови Call_admin.\n- Интимный и эротический массаж салон не оказывает: вежливо и с юмором откажи, предложи обычные услуги.\n"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        -480,
+        336
+      ],
+      "id": "849e72a1-16dc-40e4-a524-1ccc28c4cc64",
+      "name": "AI Agent",
+      "retryOnFail": true,
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $node[\"Telegram Trigger\"].json.message.chat.id }}\n",
+        "text": "={{ $json.output }}",
+        "additionalFields": {
+          "appendAttribution": false,
+          "parse_mode": "HTML"
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        160,
+        256
+      ],
+      "id": "57e788e4-0068-40b0-8186-114955551a48",
+      "name": "Send a text message",
+      "webhookId": "19fe7553-bd64-480e-bbc0-f244a06be3d1",
+      "credentials": {
+        "telegramApi": {
+          "id": "TfnCr20yASwkUHoi",
+          "name": "Сиеста чат"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "retrieve-as-tool",
+        "toolDescription": "База знаний салона «Здоровье ручной работы»: актуальный прайс-лист, стоимость и длительность всех видов массажа, описания процедур, правила салона. ОБЯЗАТЕЛЬНО вызывай ПЕРЕД любым ответом о ценах, услугах, длительности или составе процедуры. Без ответа этого инструмента цен ты не знаешь.",
+        "tableName": {
+          "__rl": true,
+          "value": "documents",
+          "mode": "list",
+          "cachedResultName": "documents"
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.vectorStoreSupabase",
+      "typeVersion": 1.3,
+      "position": [
+        -272,
+        592
+      ],
+      "id": "44b24148-e326-4b98-b120-c9bb20d09aaf",
+      "name": "search_docs2",
+      "credentials": {
+        "supabaseApi": {
+          "id": "GNcmJpHyN83My3NJ",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sessionIdType": "customKey",
+        "sessionKey": "={{ $json.message.chat.id }}",
+        "contextWindowLength": 25
+      },
+      "type": "@n8n/n8n-nodes-langchain.memoryPostgresChat",
+      "typeVersion": 1.3,
+      "position": [
+        -688,
+        560
+      ],
+      "id": "39a2b4dc-a793-48ce-a357-b83c5b1a3bc2",
+      "name": "Postgres Chat Memory1",
+      "credentials": {
+        "postgres": {
+          "id": "QAUoi9cqfmMGT5iT",
+          "name": "Postgres account"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {},
+      "type": "@n8n/n8n-nodes-langchain.embeddingsGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        -64,
+        688
+      ],
+      "id": "4a962986-525e-44de-b58a-138eb6288f47",
+      "name": "Embeddings Google Gemini",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "ehypoveIlYVLt7tg",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      },
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "dataType": "binary",
+        "binaryMode": "specificField",
+        "loader": "textLoader",
+        "textSplittingMode": "custom",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.documentDefaultDataLoader",
+      "typeVersion": 1.1,
+      "position": [
+        48,
+        608
+      ],
+      "id": "9a1fe8f7-9d19-4328-a428-ccee871d5ce8",
+      "name": "Default Data Loader"
+    },
+    {
+      "parameters": {},
+      "type": "@n8n/n8n-nodes-langchain.textSplitterCharacterTextSplitter",
+      "typeVersion": 1,
+      "position": [
+        112,
+        752
+      ],
+      "id": "9cab1afe-aa49-41f9-94ba-0d2cb0411e4a",
+      "name": "Character Text Splitter"
+    },
+    {
+      "parameters": {
+        "mode": "insert",
+        "tableName": {
+          "__rl": true,
+          "value": "documents",
+          "mode": "list",
+          "cachedResultName": "documents"
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.vectorStoreSupabase",
+      "typeVersion": 1.3,
+      "position": [
+        48,
+        416
+      ],
+      "id": "c140614a-13ce-461f-8fd6-161d4be1ae59",
+      "name": "Supabase Vector Store",
+      "credentials": {
+        "supabaseApi": {
+          "id": "GNcmJpHyN83My3NJ",
+          "name": "Supabase account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "descriptionType": "manual",
+        "toolDescription": "Интернет-поиск. Используй ТОЛЬКО для вопросов вне салона (погода, новости, общие вопросы о здоровье) и только если search_docs2 не дал ответа.",
+        "query": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('Query', ``, 'string') }}",
+        "options": {}
+      },
+      "type": "@tavily/n8n-nodes-tavily.tavilyTool",
+      "typeVersion": 1,
+      "position": [
+        -592,
+        688
+      ],
+      "id": "b9d474e1-6631-4abb-b41d-44d8300303a7",
+      "name": "Search in Tavily",
+      "credentials": {
+        "tavilyApi": {
+          "id": "MYIx4OhdrfDHgRnW",
+          "name": "Tavily account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "description": "Запись, перенос, отмена и проверка времени в календаре салона. action: create, update, delete или get. create, update и delete вызывай только когда собраны услуга, имя клиента, время и телефон. get — только проверить, свободно ли время (имя и телефон можно передать пустыми). Для update обязательно передай old_start_time — текущее время записи клиента. chat_id и platform проставляются автоматически.",
+        "workflowId": {
+          "__rl": true,
+          "value": "6tXN4CETVepjD11G",
+          "mode": "list",
+          "cachedResultUrl": "/workflow/6tXN4CETVepjD11G",
+          "cachedResultName": "Calendar"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "duration": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('duration', `Длительность услуги в минутах`, 'number') }}",
+            "action": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('action', `Действие: create (создать), update (перенести), delete (отменить), get (проверить свободно ли время)`, 'string') }}",
+            "start_time": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('start_time', `Дата и время начала (для update — НОВОЕ время) в формате ISO 8601 с часовым поясом, например: 2026-10-10T15:00:00+05:00`, 'string') }}",
+            "name": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('name', `Имя клиента, его необходимо спросить`, 'string') }}",
+            "telephon_number": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('telephon_number', `Номер телефона клиента. Формат: с кодом страны, например +7999-123-45-67`, 'string') }}",
+            "service": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('service', `название услуги`, 'string') }}",
+            "platform": "={{ $json.message ? 'tg' : 'vk' }}",
+            "chat_id": "={{ $json.message?.chat?.id ?? $json.body?.object?.message?.peer_id }}",
+            "old_start_time": "={{ /*n8n-auto-generated-fromAI-override*/ $fromAI('old_start_time', `Только для update: текущее время записи клиента в формате ISO 8601 с часовым поясом +05:00. Для остальных действий пустая строка`, 'string', ``) }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "canBeUsedToMatch": true,
+              "defaultMatch": false,
+              "display": true,
+              "displayName": "action",
+              "id": "action",
+              "removed": false,
+              "required": false,
+              "type": "string"
+            },
+            {
+              "canBeUsedToMatch": true,
+              "defaultMatch": false,
+              "display": true,
+              "displayName": "platform",
+              "id": "platform",
+              "removed": false,
+              "required": false,
+              "type": "string"
+            },
+            {
+              "canBeUsedToMatch": true,
+              "defaultMatch": false,
+              "display": true,
+              "displayName": "service",
+              "id": "service",
+              "removed": false,
+              "required": false,
+              "type": "string"
+            },
+            {
+              "canBeUsedToMatch": true,
+              "defaultMatch": false,
+              "display": true,
+              "displayName": "start_time",
+              "id": "start_time",
+              "removed": false,
+              "required": false,
+              "type": "string"
+            },
+            {
+              "canBeUsedToMatch": true,
+              "defaultMatch": false,
+              "display": true,
+              "displayName": "old_start_time",
+              "id": "old_start_time",
+              "removed": false,
+              "required": false,
+              "type": "string"
+            },
+            {
+              "canBeUsedToMatch": true,
+              "defaultMatch": false,
+              "display": true,
+              "displayName": "duration",
+              "id": "duration",
+              "removed": false,
+              "required": false,
+              "type": "number"
+            },
+            {
+              "canBeUsedToMatch": true,
+              "defaultMatch": false,
+              "display": true,
+              "displayName": "chat_id",
+              "id": "chat_id",
+              "removed": false,
+              "required": false,
+              "type": "string"
+            },
+            {
+              "canBeUsedToMatch": true,
+              "defaultMatch": false,
+              "display": true,
+              "displayName": "name",
+              "id": "name",
+              "removed": false,
+              "required": false,
+              "type": "string"
+            },
+            {
+              "canBeUsedToMatch": true,
+              "defaultMatch": false,
+              "display": true,
+              "displayName": "telephon_number",
+              "id": "telephon_number",
+              "removed": false,
+              "required": false,
+              "type": "string"
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.toolWorkflow",
+      "typeVersion": 2.2,
+      "position": [
+        -368,
+        672
+      ],
+      "id": "55ab206a-c30c-40b9-a85f-6005beba0947",
+      "name": "Call_Calendar"
+    },
+    {
+      "parameters": {
+        "descriptionType": "manual",
+        "toolDescription": "Сообщение администратору. Вызывай только в двух случаях: 1) клиент просит позвать человека, конфликтует или угрожает штрафом; 2) произошла ошибка календаря. Об успешных записях, переносах и отменах админа уведомляет сам календарь, для этого инструмент НЕ вызывай. В параметр Text передай краткую причину вызова и контекст: имя клиента, что он хотел, что пошло не так. Запрещено передавать просто последнее сообщение клиента.",
+        "chatId": "YOUR_ADMIN_CHAT_ID",
+        "text": "=👤 <b>Вызов админа!</b>\n👤 <b>Клиент:</b> {{ $json.message ? '<a href=\"tg://user?id=' + $json.message.from.id + '\">' + $json.message.from.first_name + '</a>' : 'VK ' + ($json.body?.object?.message?.from_id ?? '') }}\n💬 <b>Причина:</b> {{ $fromAI('Text', 'Полная сводка по записи или причина вызова админа', 'string') }}\n\n",
+        "additionalFields": {
+          "appendAttribution": false,
+          "parse_mode": "HTML"
+        }
+      },
+      "type": "n8n-nodes-base.telegramTool",
+      "typeVersion": 1.2,
+      "position": [
+        -480,
+        688
+      ],
+      "id": "b3786843-f3cd-4632-8213-c4fd9fc05106",
+      "name": "Call_admin",
+      "webhookId": "0f31cb5c-13dd-45c6-b057-f9ac54e98255",
+      "credentials": {
+        "telegramApi": {
+          "id": "TfnCr20yASwkUHoi",
+          "name": "Сиеста чат"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "=YOUR_ADMIN_CHAT_ID",
+        "text": "=Бу! ⚠️ Ошибка в работе бота!\n🚨 **Ошибка в работе бота!**\n\n🚨 <b>Ошибка в работе бота!</b>\n\n👤 <b>Клиент:</b> <a href=\"tg://user?id={{ $node[\"Telegram Trigger\"].json[\"message\"][\"from\"][\"id\"] }}\">{{ $node[\"Telegram Trigger\"].json[\"message\"][\"from\"][\"first_name\"] }}</a>\n💬 <b>Сообщение:</b> {{ $node[\"Telegram Trigger\"].json[\"message\"][\"text\"] }}\n🛠 <b>Ошибка:</b> {{ $json[\"error\"] }}\n",
+        "additionalFields": {
+          "appendAttribution": false,
+          "parse_mode": "HTML"
+        }
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ],
+      "id": "1d66253e-7d29-49c4-b8ba-cec3b67e473f",
+      "name": "Send_Error",
+      "webhookId": "19fe7553-bd64-480e-bbc0-f244a06be3d1",
+      "credentials": {
+        "telegramApi": {
+          "id": "TfnCr20yASwkUHoi",
+          "name": "Сиеста чат"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "YOUR_SHEET_ID",
+          "mode": "list",
+          "cachedResultName": "Запись",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_SHEET_ID/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Лист1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/YOUR_SHEET_ID/edit#gid=0"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Дата": "={{ $now }}",
+            "User_ID": "={{ $json.message?.from?.id ?? $json.object?.message?.from_id }}\n",
+            "Платформа": "={{ $json.message?.chat?.id ? 'Telegram' : 'VK' }}",
+            "Ошибка": "={{ $json.error?.message ?? $json.error }}\n"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "Дата",
+              "displayName": "Дата",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Платформа",
+              "displayName": "Платформа",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "User_ID",
+              "displayName": "User_ID",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Ошибка",
+              "displayName": "Ошибка",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        0,
+        144
+      ],
+      "id": "91bfb6cb-3bfa-412f-a0fc-1c898ac60473",
+      "name": "Append row in sheet",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "3TWchJUb0UooDY6j",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "modelName": "models/gemini-3.5-flash",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1.1,
+      "position": [
+        -800,
+        544
+      ],
+      "id": "a7fa8b4f-ccfc-4dc1-916a-182651e93e99",
+      "name": "Google Gemini Chat Model",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "ehypoveIlYVLt7tg",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "vk-webhook",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -688,
+        192
+      ],
+      "id": "01fe7ae7-1311-41fa-b231-2e3a986d3796",
+      "name": "VK trigger",
+      "webhookId": "vk-webhook"
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "YOUR_VK_CONFIRMATION_CODE\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        -528,
+        128
+      ],
+      "id": "74b26bfa-9ff7-4b58-866d-88f0dd6155ca",
+      "name": "Respond to Webhook"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Telegram Trigger": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent": {
+      "main": [
+        [
+          {
+            "node": "Send a text message",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send_Error",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Append row in sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "search_docs2": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Postgres Chat Memory1": {
+      "ai_memory": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ],
+      "main": [
+        [
+          {
+            "node": "Send_Error",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Append row in sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Embeddings Google Gemini": {
+      "ai_embedding": [
+        [
+          {
+            "node": "search_docs2",
+            "type": "ai_embedding",
+            "index": 0
+          },
+          {
+            "node": "Supabase Vector Store",
+            "type": "ai_embedding",
+            "index": 0
+          }
+        ]
+      ],
+      "main": [
+        [
+          {
+            "node": "Send_Error",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Append row in sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Default Data Loader": {
+      "ai_document": [
+        [
+          {
+            "node": "Supabase Vector Store",
+            "type": "ai_document",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Character Text Splitter": {
+      "ai_textSplitter": [
+        [
+          {
+            "node": "Default Data Loader",
+            "type": "ai_textSplitter",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Search in Tavily": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call_Calendar": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call_admin": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "VK trigger": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "timeSavedMode": "fixed",
+    "errorWorkflow": "LrnqcTPhrjnVcsm4",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": true
+  },
+  "versionId": "c3c331db-f39f-4cc5-b812-e2609926b8a1",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "aiBuilderAssisted": true,
+    "builderVariant": "mcp",
+    "instanceId": "REDACTED"
+  },
+  "nodeGroups": [],
+  "id": "JKMkXFXOqqmGG5RU",
+  "tags": []
+}

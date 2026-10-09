@@ -1,0 +1,399 @@
+{
+  "name": "Alerts",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 30
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.4,
+      "position": [
+        -208,
+        96
+      ],
+      "id": "ce7641cc-55e3-4302-80a8-d231ca983d5f",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "calendar": {
+          "__rl": true,
+          "value": "your-calendar@gmail.com",
+          "mode": "list",
+          "cachedResultName": "your-calendar@gmail.com"
+        },
+        "limit": 15,
+        "timeMin": "={{ $now.plus({ minutes: 45 }) }}",
+        "timeMax": "={{ $now.plus({ minutes: 75 }) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleCalendar",
+      "typeVersion": 1.3,
+      "position": [
+        0,
+        0
+      ],
+      "id": "b8b5cda5-c7e7-40ec-b130-22226423c999",
+      "name": "Напоминание",
+      "credentials": {
+        "googleCalendarOAuth2Api": {
+          "id": "5mmwTyYn2CGw1x0p",
+          "name": "Google Calendar account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "calendar": {
+          "__rl": true,
+          "value": "your-calendar@gmail.com",
+          "mode": "list",
+          "cachedResultName": "your-calendar@gmail.com"
+        },
+        "limit": 15,
+        "timeMin": "={{ $now.minus({  minutes: 75 }) }}",
+        "timeMax": "={{ $now.minus({ minutes: 45 }) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleCalendar",
+      "typeVersion": 1.3,
+      "position": [
+        0,
+        192
+      ],
+      "id": "c9430707-c213-406d-95e3-c52bccf816c9",
+      "name": "Опрос",
+      "credentials": {
+        "googleCalendarOAuth2Api": {
+          "id": "5mmwTyYn2CGw1x0p",
+          "name": "Google Calendar account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const result = [];\n\n// Вспомогательная функция для форматирования даты и времени\nfunction formatDateTime(dateString) {\n  if (!dateString) return 'указанное время';\n  try {\n    const date = new Date(dateString);\n    const day = date.getDate();\n    const months = ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня', 'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря'];\n    const month = months[date.getMonth()];\n    const hours = String(date.getHours()).padStart(2, '0');\n    const minutes = String(date.getMinutes()).padStart(2, '0');\n    return `${day} ${month} в ${hours}:${minutes}`;\n  } catch (e) {\n    return dateString;\n  }\n}\n\n// Вспомогательная функция парсинга\nfunction processEvent(item, type) {\n  const event = item.json;\n  const description = event.description || '';\n  const summary = event.summary || '';\n\n  let platform = null;\n  let userId = null;\n\n  // Ищем ID мессенджера\n  const tgMatch = description.match(/tg(?:_id)?:?\\s*(\\d+)/i) || summary.match(/tg(?:_id)?:?\\s*(\\d+)/i);\n  const vkMatch = description.match(/vk(?:_id)?:?\\s*(\\d+)/i) || summary.match(/vk(?:_id)?:?\\s*(\\d+)/i);\n\n  if (vkMatch) {\n    platform = 'vk';\n    userId = vkMatch[1];\n  } else if (tgMatch) {\n    platform = 'telegram';\n    userId = tgMatch[1];\n  }\n\n  if (!userId) return null;\n\n  // Время для текста\n  const rawTime = event.start?.dateTime || event.start?.date;\n  const formattedTime = formatDateTime(rawTime);\n  \n  // Очищаем название услуги от технических тегов (чтобы не писать \"маникюр tg 12345\")\n  const cleanService = summary.replace(/(tg|vk)(?:_id)?:?\\s*\\d+/gi, '').trim() || 'процедуру';\n\n  // ГЕНЕРАЦИЯ ТЕКСТА СООБЩЕНИЯ\n  let messageText = '';\n  if (type === 'reminder') {\n    messageText = `Здравствуйте! Это Сиеста, ваш виртуальный администратор. 🌸\\n\\nНапоминаю, что у вас запись на услугу «${cleanService}».\\nЖдём вас ${formattedTime}!\\n\\nЕсли ваши планы изменятся, пожалуйста, предупредите нас заранее.`;\n  } else if (type === 'survey') {\n    messageText = `Здравствуйте! Это снова администратор Сиеста. ✨\\n\\nВы недавно были у нас на услуге «${cleanService}». Будем очень благодарны за обратную связь!\\n\\nВсё ли вам понравилось? Может быть, у вас есть пожелания или то, что хотелось бы изменить? Ваш отзыв поможет нам стать лучше!`;\n  }\n\n  return {\n    json: {\n      type: type,\n      platform: platform,\n      userId: userId,\n      eventTitle: cleanService,\n      startTime: rawTime,\n      formattedTime: formattedTime,\n      messageText: messageText, // <-- Теперь текст будет передаваться дальше\n      eventId: event.id\n    }\n  };\n}\n\n// 1. Безопасно забираем данные из нод (даже если они пустые)\nlet reminders = [];\nlet surveys = [];\n\ntry { \n  reminders = $('Напоминание').all(); \n} catch(e) { }\n\ntry { \n  surveys = $('Опрос').all(); \n} catch(e) { }\n\n// 2. Обрабатываем напоминания\nfor (const item of reminders) {\n  if (item.json && item.json.id) {\n    const processed = processEvent(item, 'reminder');\n    if (processed) result.push(processed);\n  }\n}\n\n// 3. Обрабатываем опросы\nfor (const item of surveys) {\n  if (item.json && item.json.id) {\n    const processed = processEvent(item, 'survey');\n    if (processed) result.push(processed);\n  }\n}\n\nreturn result;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        400,
+        96
+      ],
+      "id": "9841d7b1-e8f5-4cee-af90-394867b618fc",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.platform }}",
+                    "rightValue": "vk",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "305dfbb5-337b-497c-89cf-3b40559aca3c"
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "2851eb55-ba1d-4312-8cd2-bbc481a3a965",
+                    "leftValue": "={{ $json.platform }}",
+                    "rightValue": "telegram",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        624,
+        96
+      ],
+      "id": "c827d965-a6f7-4845-a6d8-e1d9dfd8902b",
+      "name": "Switch"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        208,
+        96
+      ],
+      "id": "3250bedc-fcba-44f2-a071-3a7bce0b0225",
+      "name": "Merge"
+    },
+    {
+      "parameters": {
+        "schema": {
+          "__rl": true,
+          "mode": "list",
+          "value": "public"
+        },
+        "table": {
+          "__rl": true,
+          "value": "n8n_chat_histories",
+          "mode": "list",
+          "cachedResultName": "n8n_chat_histories"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "session_id": "={{ $node[\"Code in JavaScript\"].json.userId }}",
+            "message": "={{ { \"type\": \"ai\", \"content\": $node[\"Code in JavaScript\"].json.messageText } }}"
+          },
+          "matchingColumns": [
+            "id"
+          ],
+          "schema": [
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "session_id",
+              "displayName": "session_id",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "message",
+              "displayName": "message",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "object",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.7,
+      "position": [
+        1040,
+        80
+      ],
+      "id": "81a41b22-83b6-4bd2-b2b2-89a27bfbdeab",
+      "name": "Insert rows in a table",
+      "credentials": {
+        "postgres": {
+          "id": "QAUoi9cqfmMGT5iT",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.userId }}",
+        "text": "={{ $json.messageText }}",
+        "additionalFields": {}
+      },
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        816,
+        192
+      ],
+      "id": "32f88e68-4b5f-4e93-b059-96a0a4e4ec83",
+      "name": "Send a text message",
+      "webhookId": "8da55bd3-cc98-4dab-9568-15471b37c4e5",
+      "credentials": {
+        "telegramApi": {
+          "id": "dX479hVszsFqgd3f",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        816,
+        0
+      ],
+      "id": "0fd912ee-aee4-47b5-b7c9-8e8af2c0c54c",
+      "name": "HTTP Request",
+      "disabled": true
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Напоминание",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Опрос",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Напоминание": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Опрос": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Code in JavaScript": {
+      "main": [
+        [
+          {
+            "node": "Switch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send a text message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send a text message": {
+      "main": [
+        [
+          {
+            "node": "Insert rows in a table",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request": {
+      "main": [
+        [
+          {
+            "node": "Insert rows in a table",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "timeSavedMode": "fixed",
+    "errorWorkflow": "LrnqcTPhrjnVcsm4",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": true
+  },
+  "versionId": "a0f22d9c-f10e-4e7c-b262-407392f4f65a",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "REDACTED"
+  },
+  "nodeGroups": [],
+  "id": "usA41vF20dJtkgS4",
+  "tags": []
+}
