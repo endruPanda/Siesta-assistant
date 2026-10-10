@@ -118,4 +118,4 @@ alter table n8n_chat_histories
 
 ## Статус
 
-VK-вход и ветка VK в `Alerts` пока заготовки. Работает Telegram.
+VK-вход пока заготовка. Работает Telegram.
