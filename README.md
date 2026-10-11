@@ -2,7 +2,6 @@
 
 Telegram-бот на [n8n](https://n8n.io) для салона «Здоровье ручной работы»: записывает клиентов в Google Calendar, отвечает по прайсу из базы знаний, напоминает о визитах, собирает отзывы, присылает отчёты и сам разбирает ошибки.
 
-Автор: [endruPanda](https://github.com/endruPanda) · Telegram: [@Smartmanwithglasses_downloadwall](https://t.me/Smartmanwithglasses_downloadwall)
 
 ![Полная схема архитектуры Siesta](All.png)
 *Общая архитектура: 6 воркфлоу n8n и их взаимодействие*
